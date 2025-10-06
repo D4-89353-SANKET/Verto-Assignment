@@ -46,13 +46,20 @@ module.exports = {
 
     decreaseStock: async (req, res) => {
         const { quantity } = req.body;
-        const [rows] = await pool.query('SELECT * FROM products WHERE id=?', [req.params.id]);
-        const product = rows[0];
-        if (!product) return res.status(404).json({ error: 'Product not found' });
-        if (product.stock_quantity < quantity) return res.status(400).json({ error: 'Insufficient stock' });
-        await pool.query('UPDATE products SET stock_quantity = stock_quantity - ? WHERE id=?', [quantity, req.params.id]);
-        const [updated] = await pool.query('SELECT * FROM products WHERE id=?', [req.params.id]);
-        res.json(updated[0]);
+        const qty = Number(quantity);
+        if (!Number.isFinite(qty) || !Number.isInteger(qty) || qty <= 0) {
+            return res.status(400).json({ error: 'Quantity must be a positive integer' });
+        }
+
+        try {
+            // use the transactional service which locks the row and updates safely
+            const updated = await require('../services/productService').decreaseStock(req.params.id, qty);
+            res.json(updated);
+        } catch (err) {
+            // service throws Errors with optional statusCode
+            if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+            throw err; // let global error handler catch unexpected errors
+        }
     },
 
     lowStock: async (req, res) => {
